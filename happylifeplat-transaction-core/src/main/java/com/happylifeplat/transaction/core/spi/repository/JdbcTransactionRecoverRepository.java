@@ -1,15 +1,36 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.core.spi.repository;
 
 import com.alibaba.druid.pool.DruidDataSource;
+import com.google.common.collect.Maps;
 import com.happylifeplat.transaction.common.enums.CompensationCacheTypeEnum;
 import com.happylifeplat.transaction.common.exception.TransactionException;
 import com.happylifeplat.transaction.common.exception.TransactionRuntimeException;
-import com.happylifeplat.transaction.core.bean.TransactionInvocation;
-import com.happylifeplat.transaction.core.bean.TransactionRecover;
-import com.happylifeplat.transaction.core.config.TxConfig;
-import com.happylifeplat.transaction.core.config.TxDbConfig;
-import com.happylifeplat.transaction.core.spi.ObjectSerializer;
+import com.happylifeplat.transaction.common.holder.RepositoryPathUtils;
+import com.happylifeplat.transaction.common.serializer.ObjectSerializer;
+import com.happylifeplat.transaction.common.bean.TransactionInvocation;
+import com.happylifeplat.transaction.common.bean.TransactionRecover;
+import com.happylifeplat.transaction.common.config.TxConfig;
+import com.happylifeplat.transaction.common.config.TxDbConfig;
+import com.happylifeplat.transaction.core.helper.SqlHelper;
 import com.happylifeplat.transaction.core.spi.TransactionRecoverRepository;
+import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,24 +41,18 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
- * <p>Description: .</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- * jdbc实现
- *
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/7/12 10:36
- * @since JDK 1.8
+ * @author xiaoyu
  */
 public class JdbcTransactionRecoverRepository implements TransactionRecoverRepository {
 
 
-    private Logger logger = LoggerFactory.getLogger(JdbcTransactionRecoverRepository.class);
+    private static final  Logger LOGGER = LoggerFactory.getLogger(JdbcTransactionRecoverRepository.class);
 
     private DruidDataSource dataSource;
 
@@ -53,11 +68,14 @@ public class JdbcTransactionRecoverRepository implements TransactionRecoverRepos
 
     @Override
     public int create(TransactionRecover recover) {
-        String sql = "insert into " + tableName + "(id,retried_count,create_time,last_time,version,group_id,task_id,invocation)" +
-                " values(?,?,?,?,?,?,?,?)";
+        String sql = "insert into " + tableName + "(id,target_class,target_method,retried_count,create_time,last_time,version,group_id,task_id,invocation)" +
+                " values(?,?,?,?,?,?,?,?,?,?)";
         try {
-            final byte[] serialize = serializer.serialize(recover.getTransactionInvocation());
-            return executeUpdate(sql, recover.getId(), recover.getRetriedCount(), recover.getCreateTime(), recover.getLastTime(),
+            final TransactionInvocation transactionInvocation = recover.getTransactionInvocation();
+            final String className = transactionInvocation.getTargetClazz().getName();
+            final String method = transactionInvocation.getMethod();
+            final byte[] serialize = serializer.serialize(transactionInvocation);
+            return executeUpdate(sql, recover.getId(),className, method,recover.getRetriedCount(), recover.getCreateTime(), recover.getLastTime(),
                     recover.getVersion(), recover.getGroupId(), recover.getTaskId(), serialize);
 
         } catch (TransactionException e) {
@@ -99,6 +117,15 @@ public class JdbcTransactionRecoverRepository implements TransactionRecoverRepos
      */
     @Override
     public TransactionRecover findById(String id) {
+
+        String selectSql = "select * from " + tableName + " where id=?";
+
+        List<Map<String, Object>> list = executeQuery(selectSql);
+        if (CollectionUtils.isNotEmpty(list)) {
+            return list.stream().filter(Objects::nonNull)
+                    .map(this::buildByMap).collect(Collectors.toList()).get(0);
+        }
+
         return null;
     }
 
@@ -111,27 +138,54 @@ public class JdbcTransactionRecoverRepository implements TransactionRecoverRepos
     public List<TransactionRecover> listAll() {
         String selectSql = "select * from " + tableName;
         List<Map<String, Object>> list = executeQuery(selectSql);
-        List<TransactionRecover> recovers = new ArrayList<>();
-        for (Map<String, Object> map : list) {
-            TransactionRecover recover = new TransactionRecover();
-
-            recover.setId((String) map.get("id"));
-            recover.setRetriedCount((Integer) map.get("retried_count"));
-            recover.setCreateTime((Date) map.get("create_time"));
-            recover.setLastTime((Date) map.get("last_time"));
-            recover.setTaskId((String) map.get("task_id"));
-            recover.setGroupId((String) map.get("group_id"));
-            recover.setVersion((Integer) map.get("version"));
-            byte[] bytes = (byte[]) map.get("invocation");
-            try {
-                final TransactionInvocation transactionInvocation = serializer.deSerialize(bytes, TransactionInvocation.class);
-                recover.setTransactionInvocation(transactionInvocation);
-            } catch (TransactionException e) {
-                e.printStackTrace();
-            }
-            recovers.add(recover);
+        if (CollectionUtils.isNotEmpty(list)) {
+            return list.stream().filter(Objects::nonNull)
+                    .map(this::buildByMap).collect(Collectors.toList());
         }
-        return recovers;
+
+        return null;
+    }
+
+    /**
+     * 获取延迟多长时间后的事务信息,只要为了防止并发的时候，刚新增的数据被执行
+     *
+     * @param date 延迟后的时间
+     * @return List<TransactionRecover>
+     */
+    @Override
+    public List<TransactionRecover> listAllByDelay(Date date) {
+
+        String sb = "select * from " +
+                tableName +
+                " where last_time <?";
+
+        List<Map<String, Object>> list = executeQuery(sb, date);
+
+        if (CollectionUtils.isNotEmpty(list)) {
+            return list.stream().filter(Objects::nonNull)
+                    .map(this::buildByMap).collect(Collectors.toList());
+        }
+        return null;
+    }
+
+
+    private TransactionRecover buildByMap(Map<String, Object> map) {
+        TransactionRecover recover = new TransactionRecover();
+        recover.setId((String) map.get("id"));
+        recover.setRetriedCount((Integer) map.get("retried_count"));
+        recover.setCreateTime((Date) map.get("create_time"));
+        recover.setLastTime((Date) map.get("last_time"));
+        recover.setTaskId((String) map.get("task_id"));
+        recover.setGroupId((String) map.get("group_id"));
+        recover.setVersion((Integer) map.get("version"));
+        byte[] bytes = (byte[]) map.get("invocation");
+        try {
+            final TransactionInvocation transactionInvocation = serializer.deSerialize(bytes, TransactionInvocation.class);
+            recover.setTransactionInvocation(transactionInvocation);
+        } catch (TransactionException e) {
+            e.printStackTrace();
+        }
+        return recover;
     }
 
     /**
@@ -148,78 +202,22 @@ public class JdbcTransactionRecoverRepository implements TransactionRecoverRepos
         dataSource.setDriverClassName(txDbConfig.getDriverClassName());
         dataSource.setUsername(txDbConfig.getUsername());
         dataSource.setPassword(txDbConfig.getPassword());
-        dataSource.setInitialSize(2);
-        dataSource.setMaxActive(20);
-        dataSource.setMinIdle(0);
-        dataSource.setMaxWait(60000);
-        dataSource.setValidationQuery("SELECT 1");
-        dataSource.setTestOnBorrow(false);
-        dataSource.setTestWhileIdle(true);
-        dataSource.setPoolPreparedStatements(false);
-        this.tableName = "tx_transaction_" + modelName.replaceAll("-", "_");
-        executeUpdate(buildCreateTableSql(txDbConfig.getDriverClassName()));
-    }
-
-    private String buildCreateTableSql(String driverClassName) {
-        String createTableSql;
-        String dbType = "mysql";
-        if (driverClassName.contains("mysql")) {
-            dbType = "mysql";
-        } else if (driverClassName.contains("sqlserver")) {
-            dbType = "sqlserver";
-        } else if (driverClassName.contains("oracle")) {
-            dbType = "oracle";
-        }
-        switch (dbType) {
-            case "mysql": {
-                createTableSql = "CREATE TABLE `" + tableName + "` (\n" +
-                        "  `id` varchar(64) NOT NULL,\n" +
-                        "  `retried_count` int(3) NOT NULL,\n" +
-                        "  `create_time` datetime NOT NULL,\n" +
-                        "  `last_time` datetime NOT NULL,\n" +
-                        "  `version` int(6) NOT NULL,\n" +
-                        "  `group_id` varchar(64) NOT NULL,\n" +
-                        "  `task_id` varchar(64) NOT NULL,\n" +
-                        "  `invocation` longblob NOT NULL,\n" +
-                        "  PRIMARY KEY (`id`)\n" +
-                        ")";
-                break;
-            }
-            case "oracle": {
-                createTableSql = "CREATE TABLE `" + tableName + "` (\n" +
-                        "  `id` varchar(64) NOT NULL,\n" +
-                        "  `retried_count` int(3) NOT NULL,\n" +
-                        "  `create_time` date NOT NULL,\n" +
-                        "  `last_time` date NOT NULL,\n" +
-                        "  `version` int(6) NOT NULL,\n" +
-                        "  `group_id` varchar2(64) NOT NULL,\n" +
-                        "  `task_id` varchar2(64) NOT NULL,\n" +
-                        "  `invocation` BLOB NOT NULL,\n" +
-                        "  PRIMARY KEY (`id`)\n" +
-                        ")";
-                break;
-            }
-            case "sqlserver": {
-                createTableSql = "CREATE TABLE `" + tableName + "` (\n" +
-                        "  `id` varchar(64) NOT NULL,\n" +
-                        "  `retried_count` int(3) NOT NULL,\n" +
-                        "  `create_time` datetime NOT NULL,\n" +
-                        "  `last_time` datetime NOT NULL,\n" +
-                        "  `version` int(6) NOT NULL,\n" +
-                        "  `group_id` nchar(64) NOT NULL,\n" +
-                        "  `task_id` nchar(64) NOT NULL,\n" +
-                        "  `invocation` varbinary NOT NULL,\n" +
-                        "  PRIMARY KEY (`id`)\n" +
-                        ")";
-                break;
-            }
-            default: {
-                throw new RuntimeException("dbType类型不支持,目前仅支持mysql oracle sqlserver.");
-            }
-        }
-        return createTableSql;
 
 
+        dataSource.setInitialSize(txDbConfig.getInitialSize());
+        dataSource.setMaxActive(txDbConfig.getMaxActive());
+        dataSource.setMinIdle(txDbConfig.getMinIdle());
+        dataSource.setMaxWait(txDbConfig.getMaxWait());
+        dataSource.setValidationQuery(txDbConfig.getValidationQuery());
+        dataSource.setTestOnBorrow(txDbConfig.getTestOnBorrow());
+        dataSource.setTestOnReturn(txDbConfig.getTestOnReturn());
+        dataSource.setTestWhileIdle(txDbConfig.getTestWhileIdle());
+        dataSource.setPoolPreparedStatements(txDbConfig.getPoolPreparedStatements());
+        dataSource.setMaxPoolPreparedStatementPerConnectionSize(txDbConfig.getMaxPoolPreparedStatementPerConnectionSize());
+
+
+        this.tableName = RepositoryPathUtils.buildDbTableName(modelName);
+        executeUpdate(SqlHelper.buildCreateTableSql(tableName, txDbConfig.getDriverClassName()));
     }
 
 
@@ -234,74 +232,48 @@ public class JdbcTransactionRecoverRepository implements TransactionRecoverRepos
     }
 
     private int executeUpdate(String sql, Object... params) {
-        Connection connection = null;
-        PreparedStatement ps = null;
         try {
-            connection = dataSource.getConnection();
-            ps = connection.prepareStatement(sql);
-            if (params != null) {
-                for (int i = 0; i < params.length; i++) {
-                    ps.setObject((i + 1), params[i]);
+            try(Connection connection = dataSource.getConnection();
+                PreparedStatement ps=  connection.prepareStatement(sql);){
+                if (params != null) {
+                    for (int i = 0; i < params.length; i++) {
+                        ps.setObject((i + 1), params[i]);
+                    }
                 }
+                return ps.executeUpdate();
             }
-            return ps.executeUpdate();
         } catch (SQLException e) {
-            logger.error("executeUpdate->" + e.getMessage());
-        } finally {
-            try {
-                if (ps != null) {
-                    ps.close();
-                }
-                if (connection != null) {
-                    connection.close();
-                }
-            } catch (SQLException e) {
-                e.printStackTrace();
-            }
+            e.printStackTrace();
+            LOGGER.error("executeUpdate->" + e.getMessage());
         }
         return 0;
     }
 
     private List<Map<String, Object>> executeQuery(String sql, Object... params) {
-        Connection connection = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
         List<Map<String, Object>> list = null;
         try {
-            connection = dataSource.getConnection();
-            ps = connection.prepareStatement(sql);
-            if (params != null) {
-                for (int i = 0; i < params.length; i++) {
-                    ps.setObject((i + 1), params[i]);
+            try(Connection connection = dataSource.getConnection();
+                PreparedStatement ps=  connection.prepareStatement(sql)){
+                if (params != null) {
+                    for (int i = 0; i < params.length; i++) {
+                        ps.setObject((i + 1), params[i]);
+                    }
                 }
-            }
-            rs = ps.executeQuery();
-            ResultSetMetaData md = rs.getMetaData();
-            int columnCount = md.getColumnCount();
-            list = new ArrayList<>();
-            while (rs.next()) {
-                Map<String, Object> rowData = new HashMap<>();
-                for (int i = 1; i <= columnCount; i++) {
-                    rowData.put(md.getColumnName(i), rs.getObject(i));
+                ResultSet rs = ps.executeQuery();
+                ResultSetMetaData md = rs.getMetaData();
+                int columnCount = md.getColumnCount();
+                list = new ArrayList<>();
+                while (rs.next()) {
+                    Map<String, Object> rowData = Maps.newHashMap();
+                    for (int i = 1; i <= columnCount; i++) {
+                        rowData.put(md.getColumnName(i), rs.getObject(i));
+                    }
+                    list.add(rowData);
                 }
-                list.add(rowData);
             }
         } catch (SQLException e) {
-            logger.error("executeQuery->" + e.getMessage());
-        } finally {
-            try {
-                if (rs != null) {
-                    rs.close();
-                }
-                if (ps != null) {
-                    ps.close();
-                }
-                if (connection != null) {
-                    connection.close();
-                }
-            } catch (SQLException e) {
-                e.printStackTrace();
-            }
+            e.printStackTrace();
+            LOGGER.error("executeQuery->" + e.getMessage());
         }
         return list;
     }

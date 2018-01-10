@@ -1,23 +1,33 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.tx.dubbo.interceptor;
 
 
 import com.alibaba.dubbo.rpc.RpcContext;
+import com.happylifeplat.transaction.common.constant.CommonConstant;
 import com.happylifeplat.transaction.core.interceptor.TxTransactionInterceptor;
 import com.happylifeplat.transaction.core.service.AspectTransactionService;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- * DubboTxTransactionInterceptor 拦截器
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/7/11 18:22
- * @since JDK 1.8
+ * @author xiaoyu
  */
 @Component
 public class DubboTxTransactionInterceptor implements TxTransactionInterceptor {
@@ -32,7 +42,7 @@ public class DubboTxTransactionInterceptor implements TxTransactionInterceptor {
 
     @Override
     public Object interceptor(ProceedingJoinPoint pjp) throws Throwable {
-        String groupId = RpcContext.getContext().getAttachment("tx-group");
+        String groupId = RpcContext.getContext().getAttachment(CommonConstant.TX_TRANSACTION_GROUP);
         return aspectTransactionService.invoke(groupId,pjp);
     }
 

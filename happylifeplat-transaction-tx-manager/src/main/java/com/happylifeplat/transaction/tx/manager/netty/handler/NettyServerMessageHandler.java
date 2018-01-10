@@ -1,9 +1,25 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.tx.manager.netty.handler;
 
 
 import com.happylifeplat.transaction.common.enums.NettyMessageActionEnum;
 import com.happylifeplat.transaction.common.enums.NettyResultEnum;
-import com.happylifeplat.transaction.common.enums.TransactionStatusEnum;
 import com.happylifeplat.transaction.common.holder.LogUtil;
 import com.happylifeplat.transaction.common.netty.bean.HeartBeat;
 import com.happylifeplat.transaction.common.netty.bean.TxTransactionGroup;
@@ -12,8 +28,6 @@ import com.happylifeplat.transaction.tx.manager.config.Address;
 import com.happylifeplat.transaction.tx.manager.service.TxManagerService;
 import com.happylifeplat.transaction.tx.manager.service.TxTransactionExecutor;
 import com.happylifeplat.transaction.tx.manager.socket.SocketManager;
-import com.happylifeplat.transaction.tx.manager.socket.utils.SocketUtils;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -27,20 +41,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- * netty服务端接收消息
- *
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/5/11 18:02
- * @since JDK 1.8
+ * @author xiaoyu
  */
 @ChannelHandler.Sharable
 @Component
@@ -55,8 +58,6 @@ public class NettyServerMessageHandler extends ChannelInboundHandlerAdapter {
 
     private final TxTransactionExecutor txTransactionExecutor;
 
-    private final ExecutorService executorService = Executors.newFixedThreadPool(16);
-
     @Autowired
     public NettyServerMessageHandler(TxManagerService txManagerService, TxTransactionExecutor txTransactionExecutor) {
         this.txManagerService = txManagerService;
@@ -67,10 +68,10 @@ public class NettyServerMessageHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         HeartBeat hb = (HeartBeat) msg;
-        LogUtil.debug(LOGGER,"接收的客户端数据,执行的动作为:{}", hb::getAction);
         TxTransactionGroup txTransactionGroup = hb.getTxTransactionGroup();
         try {
             final NettyMessageActionEnum actionEnum = NettyMessageActionEnum.acquireByCode(hb.getAction());
+            LogUtil.debug(LOGGER, "接收的客户端数据,执行的动作为:{}", actionEnum::getDesc);
             Boolean success;
             switch (actionEnum) {
                 case HEART:
@@ -125,16 +126,17 @@ public class NettyServerMessageHandler extends ChannelInboundHandlerAdapter {
                     break;
                 case COMPLETE_COMMIT:
                     final List<TxTransactionItem> its = txTransactionGroup.getItemList();
-                    txManagerService.updateTxTransactionItemStatus(txTransactionGroup.getId(), its.get(0).getTaskKey(),
-                            its.get(0).getStatus());
-                    //ctx.writeAndFlush(buildSendMessage(hb.getKey(), true));
+                    if(CollectionUtils.isNotEmpty(its)){
+                        final TxTransactionItem item = its.get(0);
+                        txManagerService.updateTxTransactionItemStatus(txTransactionGroup.getId(),
+                                item.getTaskKey(),
+                                item.getStatus(),item.getMessage());
+                    }
                     break;
                 default:
                     hb.setAction(NettyMessageActionEnum.HEART.getCode());
                     ctx.writeAndFlush(hb);
                     break;
-
-
             }
         } finally {
             ReferenceCountUtil.release(msg);
@@ -189,15 +191,15 @@ public class NettyServerMessageHandler extends ChannelInboundHandlerAdapter {
     }
 
     private HeartBeat buildSendMessage(String key, Boolean success) {
-        HeartBeat HB = new HeartBeat();
-        HB.setKey(key);
-        HB.setAction(NettyMessageActionEnum.RECEIVE.getCode());
+        HeartBeat heartBeat = new HeartBeat();
+        heartBeat.setKey(key);
+        heartBeat.setAction(NettyMessageActionEnum.RECEIVE.getCode());
         if (success) {
-            HB.setResult(NettyResultEnum.SUCCESS.getCode());
+            heartBeat.setResult(NettyResultEnum.SUCCESS.getCode());
         } else {
-            HB.setResult(NettyResultEnum.FAIL.getCode());
+            heartBeat.setResult(NettyResultEnum.FAIL.getCode());
         }
-        return HB;
+        return heartBeat;
 
     }
 

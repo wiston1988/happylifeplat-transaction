@@ -1,15 +1,27 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.common.holder;
 
 import java.util.UUID;
 
 /**
- * 推特公司雪花算法
- *
- * @author yu.xiao @happylifeplat.com
- * @version 1.0
- * @date 2017 /3/1 11:52
- * @since JDK 1.8
- **/
+ * @author xiaoyu
+ */
 public final class IdWorkerUtils {
 
     private final long twepoch = 1288834974657L;
@@ -28,10 +40,10 @@ public final class IdWorkerUtils {
     private long sequence = 0L;
     private long lastTimestamp = -1L;
 
-    private static final IdWorkerUtils idWorker = new IdWorkerUtils();
+    private static final IdWorkerUtils ID_WORKER_UTILS = new IdWorkerUtils();
 
     public static IdWorkerUtils getInstance() {
-        return idWorker;
+        return ID_WORKER_UTILS;
     }
 
     private IdWorkerUtils() {
@@ -81,11 +93,11 @@ public final class IdWorkerUtils {
     }
 
     public String buildPartNumber() {
-        return "P" + idWorker.nextId();
+        return "P" + ID_WORKER_UTILS.nextId();
     }
 
     public String buildSkuCode() {
-        return "S" + idWorker.nextId();
+        return "S" + ID_WORKER_UTILS.nextId();
     }
 
     public String createTaskKey() {
@@ -103,7 +115,7 @@ public final class IdWorkerUtils {
     }
 
     public long randomUUID() {
-        return idWorker.nextId();
+        return ID_WORKER_UTILS.nextId();
     }
 
 

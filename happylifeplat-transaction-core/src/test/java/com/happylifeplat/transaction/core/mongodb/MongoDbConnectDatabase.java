@@ -10,16 +10,6 @@ import org.bson.Document;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- *
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/8/11 11:46
- * @since JDK 1.8
- */
 public class MongoDbConnectDatabase {
 
 
@@ -27,7 +17,7 @@ public class MongoDbConnectDatabase {
         try {
             //连接到MongoDB服务 如果是远程连接可以替换“localhost”为服务器所在IP地址
             //ServerAddress()两个参数分别为 服务器地址 和 端口
-            ServerAddress serverAddress = new ServerAddress("192.168.1.78",27017);
+            ServerAddress serverAddress = new ServerAddress("192.168.1.78", 27017);
             List<ServerAddress> addrs = new ArrayList<>();
             addrs.add(serverAddress);
 
@@ -37,7 +27,7 @@ public class MongoDbConnectDatabase {
             credentials.add(credential);
 
             //通过连接认证获取MongoDB连接
-            MongoClient mongoClient = new MongoClient(addrs,credentials);
+            MongoClient mongoClient = new MongoClient(addrs, credentials);
 
             //连接到数据库
             MongoDatabase mongoDatabase = mongoClient.getDatabase("happylife");
@@ -63,7 +53,7 @@ public class MongoDbConnectDatabase {
             System.out.println("Document inserted successfully");
 
         } catch (Exception e) {
-            System.err.println( e.getClass().getName() + ": " + e.getMessage() );
+            System.err.println(e.getClass().getName() + ": " + e.getMessage());
         }
 
 

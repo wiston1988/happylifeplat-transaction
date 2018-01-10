@@ -1,17 +1,33 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.core.service.handler;
 
-import com.happylifeplat.transaction.common.enums.NettyResultEnum;
+import com.happylifeplat.transaction.common.enums.PropagationEnum;
 import com.happylifeplat.transaction.common.enums.TransactionRoleEnum;
 import com.happylifeplat.transaction.common.enums.TransactionStatusEnum;
 import com.happylifeplat.transaction.common.exception.TransactionRuntimeException;
+import com.happylifeplat.transaction.common.holder.DateUtils;
 import com.happylifeplat.transaction.common.holder.IdWorkerUtils;
 import com.happylifeplat.transaction.common.holder.LogUtil;
 import com.happylifeplat.transaction.common.netty.bean.TxTransactionGroup;
 import com.happylifeplat.transaction.common.netty.bean.TxTransactionItem;
-import com.happylifeplat.transaction.core.bean.TxTransactionInfo;
+import com.happylifeplat.transaction.common.bean.TxTransactionInfo;
 import com.happylifeplat.transaction.core.compensation.command.TxCompensationCommand;
-import com.happylifeplat.transaction.core.concurrent.task.BlockTask;
-import com.happylifeplat.transaction.core.concurrent.task.BlockTaskHelper;
 import com.happylifeplat.transaction.core.concurrent.threadlocal.TxTransactionLocal;
 import com.happylifeplat.transaction.core.concurrent.threadpool.TransactionThreadPool;
 import com.happylifeplat.transaction.core.service.TxManagerMessageService;
@@ -23,26 +39,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.TransactionException;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ScheduledFuture;
 
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- * 开始运行分布式事务
- * tx分布式事务发起者
- *
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/7/20 16:00
- * @since JDK 1.8
+ * @author xiaoyu
  */
 @Component
 public class StartTxTransactionHandler implements TxTransactionHandler {
@@ -83,8 +88,30 @@ public class StartTxTransactionHandler implements TxTransactionHandler {
         final String waitKey = IdWorkerUtils.getInstance().createTaskKey();
 
         //创建事务组信息
-        final Boolean success = txManagerMessageService.saveTxTransactionGroup(newTxTransactionGroup(groupId, waitKey));
+        final Boolean success = txManagerMessageService.saveTxTransactionGroup(newTxTransactionGroup(groupId, waitKey, info));
         if (success) {
+            //如果发起方没有事务
+            if (info.getPropagationEnum().getValue() ==
+                    PropagationEnum.PROPAGATION_NEVER.getValue()) {
+                try {
+                    final Object res = point.proceed();
+
+                    final Boolean commit = txManagerMessageService.preCommitTxTransaction(groupId);
+                    if (commit) {
+                        //通知tm完成事务
+                        CompletableFuture.runAsync(() ->
+                                txManagerMessageService
+                                        .asyncCompleteCommit(groupId, waitKey,
+                                                TransactionStatusEnum.COMMIT.getCode(),res));
+                    }
+                    return res;
+                } catch (Throwable throwable) {
+                    //通知tm整个事务组失败，需要回滚，（回滚那些正常提交的模块，他们正在等待通知。。。。）
+                    txManagerMessageService.rollBackTxTransaction(groupId);
+                    throwable.printStackTrace();
+                    throw throwable;
+                }
+            }
 
             DefaultTransactionDefinition def = new DefaultTransactionDefinition();
             def.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -103,19 +130,17 @@ public class StartTxTransactionHandler implements TxTransactionHandler {
                     //提交事务
                     platformTransactionManager.commit(transactionStatus);
 
-
                     //删除补偿信息
                     txCompensationCommand.removeTxCompensation(compensateId);
 
                     //通知tm完成事务
                     CompletableFuture.runAsync(() ->
                             txManagerMessageService
-                                    .AsyncCompleteCommitTxTransaction(groupId, waitKey,
-                                            TransactionStatusEnum.COMMIT.getCode()));
-
+                                    .asyncCompleteCommit(groupId, waitKey,
+                                            TransactionStatusEnum.COMMIT.getCode(),res));
 
                 } else {
-                    System.out.println("预提交失败!");
+                    LogUtil.error(LOGGER, () -> "预提交失败!");
                     platformTransactionManager.rollback(transactionStatus);
                 }
                 LogUtil.info(LOGGER, "tx-transaction end,  事务发起类：{}",
@@ -137,12 +162,9 @@ public class StartTxTransactionHandler implements TxTransactionHandler {
         } else {
             throw new TransactionRuntimeException("TxManager 连接异常！");
         }
-
-
     }
 
-
-    private TxTransactionGroup newTxTransactionGroup(String groupId, String taskKey) {
+    private TxTransactionGroup newTxTransactionGroup(String groupId, String taskKey, TxTransactionInfo info) {
         //创建事务组信息
         TxTransactionGroup txTransactionGroup = new TxTransactionGroup();
         txTransactionGroup.setId(groupId);
@@ -152,10 +174,22 @@ public class StartTxTransactionHandler implements TxTransactionHandler {
         //tmManager 用redis hash 结构来存储 整个事务组的状态做为hash结构的第一条数据
 
         TxTransactionItem groupItem = new TxTransactionItem();
-        groupItem.setStatus(TransactionStatusEnum.BEGIN.getCode());//整个事务组状态为开始
-        groupItem.setTransId(groupId); //设置事务id为组的id  即为 hashKey
+
+        //整个事务组状态为开始
+        groupItem.setStatus(TransactionStatusEnum.BEGIN.getCode());
+
+        //设置事务id为组的id  即为 hashKey
+        groupItem.setTransId(groupId);
         groupItem.setTaskKey(groupId);
-        groupItem.setRole(TransactionRoleEnum.START.getCode());
+        groupItem.setCreateDate(DateUtils.getCurrentDateTime());
+
+        //设置执行类名称
+        groupItem.setTargetClass(info.getInvocation().getTargetClazz().getName());
+        //设置执行类方法
+        groupItem.setTargetMethod(info.getInvocation().getMethod());
+
+        groupItem.setRole(TransactionRoleEnum.GROUP.getCode());
+
 
         items.add(groupItem);
 
@@ -165,6 +199,16 @@ public class StartTxTransactionHandler implements TxTransactionHandler {
         item.setRole(TransactionRoleEnum.START.getCode());
         item.setStatus(TransactionStatusEnum.BEGIN.getCode());
         item.setTxGroupId(groupId);
+
+        //设置事务最大等待时间
+        item.setWaitMaxTime(info.getWaitMaxTime());
+        //设置创建时间
+        item.setCreateDate(DateUtils.getCurrentDateTime());
+        //设置执行类名称
+        item.setTargetClass(info.getInvocation().getTargetClazz().getName());
+        //设置执行类方法
+        item.setTargetMethod(info.getInvocation().getMethod());
+
         items.add(item);
 
         txTransactionGroup.setItemList(items);

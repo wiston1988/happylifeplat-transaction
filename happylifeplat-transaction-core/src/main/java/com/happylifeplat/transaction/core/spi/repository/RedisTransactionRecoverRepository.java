@@ -1,38 +1,58 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.core.spi.repository;
 
+import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
+import com.happylifeplat.transaction.common.bean.TransactionInvocation;
+import com.happylifeplat.transaction.common.bean.adapter.TransactionRecoverAdapter;
 import com.happylifeplat.transaction.common.enums.CompensationCacheTypeEnum;
 import com.happylifeplat.transaction.common.exception.TransactionException;
-import com.happylifeplat.transaction.common.exception.TransactionIOException;
+import com.happylifeplat.transaction.common.exception.TransactionIoException;
 import com.happylifeplat.transaction.common.exception.TransactionRuntimeException;
 import com.happylifeplat.transaction.common.holder.LogUtil;
-import com.happylifeplat.transaction.core.bean.TransactionRecover;
-import com.happylifeplat.transaction.core.config.TxConfig;
-import com.happylifeplat.transaction.core.config.TxRedisConfig;
+import com.happylifeplat.transaction.common.holder.RepositoryPathUtils;
+import com.happylifeplat.transaction.common.holder.TransactionRecoverUtils;
+import com.happylifeplat.transaction.common.jedis.JedisClient;
+import com.happylifeplat.transaction.common.jedis.JedisClientCluster;
+import com.happylifeplat.transaction.common.jedis.JedisClientSingle;
+import com.happylifeplat.transaction.common.serializer.ObjectSerializer;
+import com.happylifeplat.transaction.common.bean.TransactionRecover;
+import com.happylifeplat.transaction.common.config.TxConfig;
+import com.happylifeplat.transaction.common.config.TxRedisConfig;
 import com.happylifeplat.transaction.core.helper.ByteUtils;
 import com.happylifeplat.transaction.core.helper.RedisHelper;
-import com.happylifeplat.transaction.core.spi.ObjectSerializer;
 import com.happylifeplat.transaction.core.spi.TransactionRecoverRepository;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import redis.clients.jedis.HostAndPort;
+import redis.clients.jedis.JedisCluster;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 
 import java.util.Date;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- * redis 实现
- *
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/7/19 19:33
- * @since JDK 1.8
+ * @author xiaoyu
  */
 public class RedisTransactionRecoverRepository implements TransactionRecoverRepository {
 
@@ -45,9 +65,10 @@ public class RedisTransactionRecoverRepository implements TransactionRecoverRepo
     private ObjectSerializer objectSerializer;
 
 
-    private JedisPool jedisPool;
-
     private String keyName;
+
+    private JedisClient jedisClient;
+
 
     /**
      * 创建本地事务对象
@@ -58,22 +79,11 @@ public class RedisTransactionRecoverRepository implements TransactionRecoverRepo
     @Override
     public int create(TransactionRecover transactionRecover) {
         try {
-            final byte[] key = RedisHelper.getRedisKey(keyName, transactionRecover.getId());
-            Long statusCode = RedisHelper.execute(jedisPool,
-                    jedis -> {
-                        try {
-                            return jedis.hsetnx(key,
-                                    ByteUtils.longToBytes(transactionRecover.getVersion()),
-                                    objectSerializer.serialize(transactionRecover));
-                        } catch (TransactionException e) {
-                            e.printStackTrace();
-                            return 0L;
-                        }
-                    });
-
-            return statusCode.intValue();
+            final String redisKey = RedisHelper.buildRecoverKey(keyName, transactionRecover.getId());
+            jedisClient.set(redisKey, TransactionRecoverUtils.convert(transactionRecover, objectSerializer));
+            return 1;
         } catch (Exception e) {
-            throw new TransactionIOException(e);
+            throw new TransactionIoException(e);
         }
     }
 
@@ -86,11 +96,10 @@ public class RedisTransactionRecoverRepository implements TransactionRecoverRepo
     @Override
     public int remove(String id) {
         try {
-            final byte[] key = RedisHelper.getRedisKey(keyName, id);
-            Long result = RedisHelper.execute(jedisPool, jedis -> jedis.del(key));
-            return result.intValue();
+            final String redisKey = RedisHelper.buildRecoverKey(keyName, id);
+            return jedisClient.del(redisKey).intValue();
         } catch (Exception e) {
-            throw new TransactionIOException(e);
+            throw new TransactionIoException(e);
         }
     }
 
@@ -103,27 +112,12 @@ public class RedisTransactionRecoverRepository implements TransactionRecoverRepo
     @Override
     public int update(TransactionRecover transactionRecover) throws TransactionRuntimeException {
         try {
-            final byte[] key = RedisHelper.getRedisKey(keyName, transactionRecover.getId());
-            Long statusCode = RedisHelper.execute(jedisPool, jedis -> {
-                transactionRecover.setVersion(transactionRecover.getVersion()+1);
-                transactionRecover.setLastTime(new Date());
-                transactionRecover.setRetriedCount(transactionRecover.getRetriedCount()+1);
-                try {
-                    return jedis.hsetnx(key,
-                            ByteUtils.longToBytes(transactionRecover.getVersion()),
-                            objectSerializer.serialize(transactionRecover));
-                } catch (TransactionException e) {
-                    e.printStackTrace();
-                    return 0L;
-                }
-
-            });
-
-            final int intValue = statusCode.intValue();
-            if(intValue<=0){
-                throw new TransactionRuntimeException("数据已经被更新！");
-            }
-            return intValue;
+            final String redisKey = RedisHelper.buildRecoverKey(keyName, transactionRecover.getId());
+            transactionRecover.setVersion(transactionRecover.getVersion() + 1);
+            transactionRecover.setLastTime(new Date());
+            transactionRecover.setRetriedCount(transactionRecover.getRetriedCount() + 1);
+            final String result = jedisClient.set(redisKey, TransactionRecoverUtils.convert(transactionRecover, objectSerializer));
+            return 1;
         } catch (Exception e) {
             throw new TransactionRuntimeException(e);
         }
@@ -139,15 +133,13 @@ public class RedisTransactionRecoverRepository implements TransactionRecoverRepo
     @Override
     public TransactionRecover findById(String id) {
         try {
+            final String redisKey = RedisHelper.buildRecoverKey(keyName, id);
 
-            final byte[] key = RedisHelper.getRedisKey(keyName, id);
-            byte[] content = RedisHelper.getKeyValue(jedisPool, key);
-            if (content != null) {
-                return objectSerializer.deSerialize(content, TransactionRecover.class);
-            }
-            return null;
+            byte[] contents = jedisClient.get(redisKey.getBytes());
+
+            return TransactionRecoverUtils.transformBean(contents, objectSerializer);
         } catch (Exception e) {
-            throw new TransactionIOException(e);
+            throw new TransactionIoException(e);
         }
     }
 
@@ -160,18 +152,32 @@ public class RedisTransactionRecoverRepository implements TransactionRecoverRepo
     public List<TransactionRecover> listAll() {
         try {
             List<TransactionRecover> transactions = Lists.newArrayList();
-            Set<byte[]> keys = RedisHelper.execute(jedisPool,
-                    jedis -> jedis.keys((keyName + "*").getBytes()));
+            Set<byte[]> keys = jedisClient.keys((keyName + "*").getBytes());
             for (final byte[] key : keys) {
-                byte[] content = RedisHelper.getKeyValue(jedisPool, key);
-                if (content != null) {
-                    transactions.add(objectSerializer.deSerialize(content, TransactionRecover.class));
+                byte[] contents = jedisClient.get(key);
+                if (contents != null) {
+                    transactions.add(TransactionRecoverUtils.transformBean(contents, objectSerializer));
                 }
             }
             return transactions;
         } catch (Exception e) {
-            throw new TransactionIOException(e);
+            throw new TransactionIoException(e);
         }
+    }
+
+    /**
+     * 获取延迟多长时间后的事务信息,只要为了防止并发的时候，刚新增的数据被执行
+     *
+     * @param date 延迟后的时间
+     * @return List<TransactionRecover>
+     */
+    @Override
+    public List<TransactionRecover> listAllByDelay(Date date) {
+        final List<TransactionRecover> tccTransactions = listAll();
+        return tccTransactions
+                .stream()
+                .filter(transactionRecover -> transactionRecover.getLastTime().compareTo(date) > 0)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -182,10 +188,10 @@ public class RedisTransactionRecoverRepository implements TransactionRecoverRepo
      */
     @Override
     public void init(String modelName, TxConfig txConfig) {
-        keyName = modelName;
+        keyName = RepositoryPathUtils.buildRedisKey(modelName);
         final TxRedisConfig txRedisConfig = txConfig.getTxRedisConfig();
         try {
-            buildJedisPool(txRedisConfig);
+            buildJedisClient(txRedisConfig);
         } catch (Exception e) {
             LogUtil.error(LOGGER, "redis 初始化异常！请检查配置信息:{}", e::getMessage);
         }
@@ -212,7 +218,8 @@ public class RedisTransactionRecoverRepository implements TransactionRecoverRepo
         this.objectSerializer = objectSerializer;
     }
 
-    private void buildJedisPool(TxRedisConfig txRedisConfig) {
+    private void buildJedisClient(TxRedisConfig txRedisConfig) {
+        JedisPool jedisPool;
         JedisPoolConfig config = new JedisPoolConfig();
         config.setMaxIdle(txRedisConfig.getMaxIdle());
         //最小空闲连接数, 默认0
@@ -232,13 +239,25 @@ public class RedisTransactionRecoverRepository implements TransactionRecoverRepo
         //对象空闲多久后逐出, 当空闲时间>该值 ，且 空闲连接>最大空闲数 时直接逐出,不再根据MinEvictableIdleTimeMillis判断  (默认逐出策略)，默认30m
         config.setSoftMinEvictableIdleTimeMillis(txRedisConfig.getSoftMinEvictableIdleTimeMillis());
         //逐出扫描的时间间隔(毫秒) 如果为负数,则不运行逐出线程, 默认-1
-        config.setTimeBetweenEvictionRunsMillis(txRedisConfig.getTimeBetweenEvictionRunsMillis()); //1m
+        config.setTimeBetweenEvictionRunsMillis(txRedisConfig.getTimeBetweenEvictionRunsMillis());
         //每次逐出检查时 逐出的最大数目 如果为负数就是 : 1/abs(n), 默认3
         config.setNumTestsPerEvictionRun(txRedisConfig.getNumTestsPerEvictionRun());
-        if(StringUtils.isNoneBlank(txRedisConfig.getPassword())){
-            jedisPool = new JedisPool(config, txRedisConfig.getHostName(), txRedisConfig.getPort(), txRedisConfig.getTimeOut(), txRedisConfig.getPassword());
-        }else{
-            jedisPool = new JedisPool(config, txRedisConfig.getHostName(), txRedisConfig.getPort(), txRedisConfig.getTimeOut());
+
+        //如果是集群模式
+        if (txRedisConfig.getCluster()) {
+            final String clusterUrl = txRedisConfig.getClusterUrl();
+            final Set<HostAndPort> hostAndPorts = Splitter.on(clusterUrl)
+                    .splitToList(";").stream()
+                    .map(HostAndPort::parseString).collect(Collectors.toSet());
+            JedisCluster jedisCluster = new JedisCluster(hostAndPorts, config);
+            jedisClient = new JedisClientCluster(jedisCluster);
+        } else {
+            if (StringUtils.isNoneBlank(txRedisConfig.getPassword())) {
+                jedisPool = new JedisPool(config, txRedisConfig.getHostName(), txRedisConfig.getPort(), txRedisConfig.getTimeOut(), txRedisConfig.getPassword());
+            } else {
+                jedisPool = new JedisPool(config, txRedisConfig.getHostName(), txRedisConfig.getPort(), txRedisConfig.getTimeOut());
+            }
+            jedisClient = new JedisClientSingle(jedisPool);
         }
 
     }

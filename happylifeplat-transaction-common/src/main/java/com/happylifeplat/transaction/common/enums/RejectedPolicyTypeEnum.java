@@ -1,17 +1,19 @@
-/**
- * Copyright (C) 2016 Newland Group Holding Limited
- * <p>
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * <p>
- * http://www.apache.org/licenses/LICENSE-2.0
- * <p>
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
  */
 package com.happylifeplat.transaction.common.enums;
 
@@ -22,20 +24,29 @@ import java.util.Optional;
 
 
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- * 线程池拒绝策略枚举
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/5/27 16:35
- * @since JDK 1.8
+ * The enum Rejected policy type enum.
+ * @author xiaoyu
  */
 public enum RejectedPolicyTypeEnum {
+    /**
+     * Abort policy rejected policy type enum.
+     */
     ABORT_POLICY("Abort"),
+    /**
+     * Blocking policy rejected policy type enum.
+     */
     BLOCKING_POLICY("Blocking"),
+    /**
+     * Caller runs policy rejected policy type enum.
+     */
     CALLER_RUNS_POLICY("CallerRuns"),
+    /**
+     * Discarded policy rejected policy type enum.
+     */
     DISCARDED_POLICY("Discarded"),
+    /**
+     * Rejected policy rejected policy type enum.
+     */
     REJECTED_POLICY("Rejected");
 
     private String value;
@@ -44,10 +55,21 @@ public enum RejectedPolicyTypeEnum {
         this.value = value;
     }
 
+    /**
+     * Gets value.
+     *
+     * @return the value
+     */
     public String getValue() {
         return value;
     }
 
+    /**
+     * From string rejected policy type enum.
+     *
+     * @param value the value
+     * @return the rejected policy type enum
+     */
     public static RejectedPolicyTypeEnum fromString(String value) {
         Optional<RejectedPolicyTypeEnum> rejectedPolicyTypeEnum =
                 Arrays.stream(RejectedPolicyTypeEnum.values())
@@ -56,6 +78,7 @@ public enum RejectedPolicyTypeEnum {
         return rejectedPolicyTypeEnum.orElse(RejectedPolicyTypeEnum.ABORT_POLICY);
     }
 
+    @Override
     public String toString() {
         return value;
     }

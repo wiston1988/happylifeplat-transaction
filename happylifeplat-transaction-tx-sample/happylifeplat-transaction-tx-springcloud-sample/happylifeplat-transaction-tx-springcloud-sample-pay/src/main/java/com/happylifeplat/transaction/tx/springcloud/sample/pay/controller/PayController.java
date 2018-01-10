@@ -1,22 +1,33 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.tx.springcloud.sample.pay.controller;
 
 import com.happylifeplat.transaction.tx.springcloud.sample.pay.service.PayService;
+import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- *
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/8/7 13:58
- * @since JDK 1.8
+ * @author xiaoyu
  */
-
 @RestController
 @RequestMapping("/pay")
 public class PayController {
@@ -28,13 +39,14 @@ public class PayController {
         this.payService = payService;
     }
 
-    @RequestMapping("/orderPay")
+    @PostMapping("/orderPay")
     public String save() {
         payService.orderPay();
         return "success";
     }
 
-    @RequestMapping("/aliPayFail")
+    @PostMapping("/aliPayFail")
+    @ApiOperation("当alipay支付异常的时候，pay表的数据不会新增 alipay表不会新增 wechat表不会新增")
     public String aliPayFail() {
 
         try {
@@ -48,7 +60,8 @@ public class PayController {
     }
 
 
-    @RequestMapping("/aliPayTimeOut")
+    @PostMapping("/aliPayTimeOut")
+    @ApiOperation("当alipay支付超时的时候，pay表的数据不会新增  alipay表不会新增 wechat表不会新增")
     public String aliPayTimeOut() {
         try {
             payService.payWithAliPayTimeOut();
@@ -61,8 +74,8 @@ public class PayController {
     }
 
 
-
-    @RequestMapping("/wechatPayFail")
+    @PostMapping("/wechatPayFail")
+    @ApiOperation("当wechat支付失败的时候，pay表的数据不会新增  alipay表不会新增 wechat表不会新增")
     public String wechatPayFail() {
         try {
             payService.payWithWechatPayFail();
@@ -75,7 +88,8 @@ public class PayController {
     }
 
 
-    @RequestMapping("/wechatPayTimeOut")
+    @PostMapping("/wechatPayTimeOut")
+    @ApiOperation("当wechat支付超时的时候，pay表的数据不会新增  alipay表不会新增 wechat表不会新增")
     public String wechatPayTimeOut() {
         try {
             payService.payWithWechatPayTimeOut();
@@ -86,8 +100,6 @@ public class PayController {
 
         return "success";
     }
-
-
 
 
 }

@@ -1,3 +1,20 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.core.concurrent.task;
 
 import com.google.common.cache.CacheBuilder;
@@ -11,16 +28,7 @@ import org.apache.commons.lang.StringUtils;
 import java.util.concurrent.ExecutionException;
 
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- * BlockTaskHelper task操作帮助类
- * 采用google cache 来缓存task类 (放弃concurrentHashMap)
- *
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/7/20 19:14
- * @since JDK 1.8
+ * @author xiaoyu
  */
 public class BlockTaskHelper {
 
@@ -32,7 +40,7 @@ public class BlockTaskHelper {
 
     }
 
-    private static final LoadingCache<String, BlockTask> cache = CacheBuilder.newBuilder()
+    private static final LoadingCache<String, BlockTask> LOADING_CACHE = CacheBuilder.newBuilder()
             .maximumWeight(MAX_COUNT)
             .weigher((Weigher<String, BlockTask>) (string, BlockTask) -> getSize())
             .build(new CacheLoader<String, BlockTask>() {
@@ -48,14 +56,14 @@ public class BlockTaskHelper {
     }
 
     private static int getSize() {
-        if (cache == null) {
+        if (LOADING_CACHE == null) {
             return 0;
         }
-        return (int) cache.size();
+        return (int) LOADING_CACHE.size();
     }
 
 
-    private  static BlockTask createTask(String key) {
+    private static BlockTask createTask(String key) {
         BlockTask task = new BlockTask();
         task.setKey(key);
         return task;
@@ -69,7 +77,7 @@ public class BlockTaskHelper {
      */
     public BlockTask getTask(String key) {
         try {
-            return cache.get(key);
+            return LOADING_CACHE.get(key);
         } catch (ExecutionException e) {
             throw new TransactionRuntimeException(e.getCause());
         }
@@ -78,7 +86,7 @@ public class BlockTaskHelper {
 
     public void removeByKey(String key) {
         if (StringUtils.isNotEmpty(key)) {
-            cache.invalidate(key);
+            LOADING_CACHE.invalidate(key);
         }
     }
 
@@ -90,11 +98,9 @@ public class BlockTaskHelper {
         BlockTaskHelper.getInstance().removeByKey(taskKey);
 
 
-        System.out.println(cache.size());
+        System.out.println(LOADING_CACHE.size());
 
-        //   final BlockTask blockTask = cache.get("1576926491");
-
-        System.out.println(cache.size());
+        System.out.println(LOADING_CACHE.size());
 
     }
 

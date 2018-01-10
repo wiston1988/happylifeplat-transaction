@@ -1,17 +1,33 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.core.service.handler;
 
 import com.happylifeplat.transaction.common.enums.NettyResultEnum;
 import com.happylifeplat.transaction.common.enums.TransactionRoleEnum;
 import com.happylifeplat.transaction.common.enums.TransactionStatusEnum;
+import com.happylifeplat.transaction.common.holder.DateUtils;
 import com.happylifeplat.transaction.common.holder.IdWorkerUtils;
 import com.happylifeplat.transaction.common.holder.LogUtil;
 import com.happylifeplat.transaction.common.netty.bean.TxTransactionItem;
-import com.happylifeplat.transaction.core.bean.TxTransactionInfo;
+import com.happylifeplat.transaction.common.bean.TxTransactionInfo;
 import com.happylifeplat.transaction.core.compensation.command.TxCompensationCommand;
-import com.happylifeplat.transaction.core.concurrent.task.AsyncCall;
 import com.happylifeplat.transaction.core.concurrent.task.BlockTask;
 import com.happylifeplat.transaction.core.concurrent.task.BlockTaskHelper;
-import com.happylifeplat.transaction.core.concurrent.threadlocal.TxTransactionLocal;
 import com.happylifeplat.transaction.core.concurrent.threadpool.TransactionThreadPool;
 import com.happylifeplat.transaction.core.service.TxManagerMessageService;
 import com.happylifeplat.transaction.core.service.TxTransactionHandler;
@@ -29,17 +45,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledFuture;
 
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- * 分布式事务运参与者
- *
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/7/20 16:02
- * @since JDK 1.8
+ * @author xiaoyu
  */
-
 @Component
 public class ActorTxTransactionHandler implements TxTransactionHandler {
 
@@ -79,7 +86,6 @@ public class ActorTxTransactionHandler implements TxTransactionHandler {
                     DefaultTransactionDefinition def = new DefaultTransactionDefinition();
                     def.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
                     TransactionStatus transactionStatus = platformTransactionManager.getTransaction(def);
-
                       /*
                       1 设置返回数据res
                       2 唤醒主线程
@@ -88,17 +94,11 @@ public class ActorTxTransactionHandler implements TxTransactionHandler {
                       5 TxManager 发送提交通知，唤醒线程， 进行提交
                       6 提交完成后，想txManager 发送事务已经完成的通知
                      */
-
                     try {
-                        TxTransactionItem item = new TxTransactionItem();
-                        item.setTaskKey(waitKey);
-                        item.setTransId(IdWorkerUtils.getInstance().createUUID());
-                        item.setStatus(TransactionStatusEnum.BEGIN.getCode());//开始事务
-                        item.setRole(TransactionRoleEnum.ACTOR.getCode());//参与者
-                        item.setTxGroupId(info.getTxGroupId());
 
                         //添加事务组信息
-                        final Boolean success = txManagerMessageService.addTxTransaction(info.getTxGroupId(), item);
+                        final Boolean success = txManagerMessageService.addTxTransaction(info.getTxGroupId(),
+                                build(waitKey, info));
                         if (success) {
                             //发起调用
                             final Object res = point.proceed();
@@ -111,13 +111,12 @@ public class ActorTxTransactionHandler implements TxTransactionHandler {
                             String compensateId = txCompensationCommand.saveTxCompensation(info.getInvocation(),
                                     info.getTxGroupId(), waitKey);
 
-
                             /*
                              *
                              *等待txManager通知（提交或者回滚） 此线程唤醒（txManager通知客户端，然后唤醒）
                              * 如果此时TxManager down机或者网络通信异常 需要再开一个调度线程来唤醒
                              */
-                            final ScheduledFuture scheduledFuture = transactionThreadPool.multiThreadscheduled(() -> {
+                            final ScheduledFuture scheduledFuture = transactionThreadPool.multiScheduled(() -> {
                                 LogUtil.info(LOGGER, "事务组id：{}，自动超时处理", info::getTxGroupId);
                                 final BlockTask blockTask = BlockTaskHelper.getInstance().getTask(waitKey);
                                 if (!blockTask.isNotify()) {
@@ -142,9 +141,14 @@ public class ActorTxTransactionHandler implements TxTransactionHandler {
                                     return false;
                                 }
 
-                            });
+                            }, info.getWaitMaxTime());
+
+                            waitTask.await();
+
+                            LogUtil.info(LOGGER, "已经成功接收txManager指令，并执行！{}",
+                                    () -> info.getTxGroupId() + ":" + waitKey);
                             try {
-                                waitTask.await();
+
                                 //如果已经被唤醒，就不需要去执行调度线程了 ，关闭上面的调度线程池中的任务
                                 if (!scheduledFuture.isDone()) {
                                     scheduledFuture.cancel(false);
@@ -155,32 +159,27 @@ public class ActorTxTransactionHandler implements TxTransactionHandler {
                                     //提交事务
                                     platformTransactionManager.commit(transactionStatus);
 
-                                    //删除本地补偿信息
-                                    txCompensationCommand.removeTxCompensation(compensateId);
+                                    //通知tm 自身事务提交
+                                    asyncComplete(info.getTxGroupId(), waitKey,
+                                            TransactionStatusEnum.COMMIT.getCode(), res);
 
-                                    //通知tm 自身事务已经完成
-
-                                    //通知tm完成事务
-                                    CompletableFuture.runAsync(() ->
-                                            txManagerMessageService
-                                                    .AsyncCompleteCommitTxTransaction(info.getTxGroupId(), waitKey,
-                                                            TransactionStatusEnum.COMMIT.getCode()));
-                                } else if (NettyResultEnum.TIME_OUT.getCode() == status) {
-
-                                    //如果超时了，就回滚当前事务
+                                } else {
+                                    //回滚当前事务
                                     platformTransactionManager.rollback(transactionStatus);
 
-                                    //通知tm 自身事务需要回滚,不能提交
-                                    CompletableFuture.runAsync(() ->
-                                            txManagerMessageService
-                                                    .AsyncCompleteCommitTxTransaction(info.getTxGroupId(), waitKey,
-                                                            TransactionStatusEnum.ROLLBACK.getCode()));
+
+                                    //通知tm 自身事务回滚
+                                    asyncComplete(info.getTxGroupId(), waitKey,
+                                            TransactionStatusEnum.ROLLBACK.getCode(), res);
+
                                 }
                             } catch (Throwable throwable) {
                                 platformTransactionManager.rollback(transactionStatus);
                                 throwable.printStackTrace();
                             } finally {
                                 BlockTaskHelper.getInstance().removeByKey(waitKey);
+                                //删除本地补偿信息
+                                txCompensationCommand.removeTxCompensation(compensateId);
                             }
 
                         } else {
@@ -189,8 +188,11 @@ public class ActorTxTransactionHandler implements TxTransactionHandler {
 
                     } catch (final Throwable throwable) {
                         throwable.printStackTrace();
-                        //如果有异常 当前项目事务进行回滚 ，同时通知tm 整个事务失败
+                        //如果有异常 当前项目事务进行回滚
                         platformTransactionManager.rollback(transactionStatus);
+                        //通知tm 自身事务失败
+                        asyncComplete(info.getTxGroupId(),
+                                waitKey, TransactionStatusEnum.FAILURE.getCode(), throwable.getMessage());
 
                         task.setAsyncCall(objects -> {
                             throw throwable;
@@ -210,6 +212,40 @@ public class ActorTxTransactionHandler implements TxTransactionHandler {
             BlockTaskHelper.getInstance().removeByKey(task.getKey());
         }
 
+
+    }
+
+
+    private void asyncComplete(String txGroupId, String waitKey, Integer status, Object res) {
+        //通知tm 自身事务执行状态
+        CompletableFuture.runAsync(() ->
+                txManagerMessageService
+                        .asyncCompleteCommit(txGroupId, waitKey,
+                                status, res));
+
+    }
+
+
+    private TxTransactionItem build(String waitKey, TxTransactionInfo info) {
+        TxTransactionItem item = new TxTransactionItem();
+        item.setTaskKey(waitKey);
+        item.setTransId(IdWorkerUtils.getInstance().createUUID());
+        //开始事务
+        item.setStatus(TransactionStatusEnum.BEGIN.getCode());
+        //设置为参与者角色
+        item.setRole(TransactionRoleEnum.ACTOR.getCode());
+        item.setTxGroupId(info.getTxGroupId());
+
+        //设置事务最大等待时间
+        item.setWaitMaxTime(info.getWaitMaxTime());
+        //设置创建时间
+        item.setCreateDate(DateUtils.getCurrentDateTime());
+        //设置执行类名称
+        item.setTargetClass(info.getInvocation().getTargetClazz().getName());
+        //设置执行类方法
+        item.setTargetMethod(info.getInvocation().getMethod());
+
+        return item;
 
     }
 

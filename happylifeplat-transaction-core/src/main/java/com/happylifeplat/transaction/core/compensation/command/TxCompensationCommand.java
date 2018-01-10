@@ -1,37 +1,38 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.core.compensation.command;
 
 import com.happylifeplat.transaction.common.enums.CompensationActionEnum;
 import com.happylifeplat.transaction.common.enums.TransactionStatusEnum;
 import com.happylifeplat.transaction.common.holder.IdWorkerUtils;
-import com.happylifeplat.transaction.common.holder.LogUtil;
-import com.happylifeplat.transaction.core.bean.TransactionInvocation;
-import com.happylifeplat.transaction.core.bean.TransactionRecover;
+import com.happylifeplat.transaction.common.bean.TransactionInvocation;
+import com.happylifeplat.transaction.common.bean.TransactionRecover;
 import com.happylifeplat.transaction.core.compensation.TxCompensationService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
-import java.util.concurrent.CompletableFuture;
 
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- *
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/7/19 16:01
- * @since JDK 1.8
+ * @author xiaoyu
  */
 @Service
 public class TxCompensationCommand implements Command {
-
-    /**
-     * logger
-     */
-    private static final Logger LOGGER = LoggerFactory.getLogger(TxCompensationCommand.class);
 
     private final TxCompensationService txCompensationService;
 
@@ -48,14 +49,6 @@ public class TxCompensationCommand implements Command {
     @Override
     public void execute(TxCompensationAction txCompensationAction) {
         txCompensationService.submit(txCompensationAction);
-      /*  CompletableFuture.supplyAsync(() -> txCompensationService.submit(txCompensationAction))
-                .thenAccept(result -> {
-                    if (result) {
-                        LogUtil.info(LOGGER, "补偿操作提交成功！,执行的操作为:{}",
-                                () -> txCompensationAction.getCompensationActionEnum().getCode());
-                    }
-                });*/
-
     }
 
 
@@ -65,7 +58,7 @@ public class TxCompensationCommand implements Command {
         TransactionRecover recover = new TransactionRecover();
         recover.setRetriedCount(1);
         recover.setStatus(TransactionStatusEnum.BEGIN.getCode());
-        recover.setId(IdWorkerUtils.getInstance().createGroupId());
+        recover.setId(groupId);
         recover.setTransactionInvocation(invocation);
         recover.setGroupId(groupId);
         recover.setTaskId(taskId);

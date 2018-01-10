@@ -1,20 +1,32 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.tx.manager.service.execute;
 
 import com.google.gson.Gson;
-import com.happylifeplat.transaction.common.entity.TxManagerServer;
-import com.happylifeplat.transaction.common.enums.NettyMessageActionEnum;
 import com.happylifeplat.transaction.common.enums.TransactionStatusEnum;
 import com.happylifeplat.transaction.common.holder.LogUtil;
 import com.happylifeplat.transaction.common.holder.httpclient.OkHttpTools;
 import com.happylifeplat.transaction.common.netty.bean.HeartBeat;
-import com.happylifeplat.transaction.common.netty.bean.TxTransactionGroup;
 import com.happylifeplat.transaction.common.netty.bean.TxTransactionItem;
 import com.happylifeplat.transaction.tx.manager.config.ChannelSender;
 import com.happylifeplat.transaction.tx.manager.config.Constant;
 import com.happylifeplat.transaction.tx.manager.config.ExecutorMessageTool;
 import com.happylifeplat.transaction.tx.manager.service.TxManagerService;
-import com.happylifeplat.transaction.tx.manager.socket.SocketManager;
-import io.netty.channel.Channel;
 import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +34,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -30,15 +41,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- * TxTransactionExecutorService 实现类
- *
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/7/26 11:16
- * @since JDK 1.8
+ * @author xiaoyu
  */
 @Component
 public class TxTransactionExecutorService extends AbstractTxTransactionExecutor {
@@ -49,7 +52,7 @@ public class TxTransactionExecutorService extends AbstractTxTransactionExecutor 
     private static final Logger LOGGER = LoggerFactory.getLogger(TxTransactionExecutorService.class);
 
 
-    private static final Gson gson = new Gson();
+    private static final Gson GSON = new Gson();
 
 
     @Autowired
@@ -119,20 +122,7 @@ public class TxTransactionExecutorService extends AbstractTxTransactionExecutor 
                 }
 
             });
-
             httpExecute(elseItems, TransactionStatusEnum.COMMIT);
-
-          /*  final CompletableFuture[] cfs = txTransactionItems
-                    .stream()
-                    .map(item ->
-                            CompletableFuture.runAsync(() -> {
-                                HeartBeat heartBeat = buildCommitMessage(txGroupId, item);
-                                item.getChannel().writeAndFlush(heartBeat);
-                            }).whenComplete((v, e) ->
-                                    LogUtil.info(LOGGER, "txManger 成功发送doCommit指令 事务taskId为：{}", item::getTaskKey)))
-                    .toArray(CompletableFuture[]::new);
-            // CompletableFuture.allOf(cfs).join();
-            LogUtil.info(LOGGER, "txManger 成功发送doCommit指令 事务组id为：{}", () -> txGroupId);*/
         } catch (Exception e) {
             e.printStackTrace();
             LogUtil.info(LOGGER, "txManger 发送doCommit指令异常 ", e::getMessage);
@@ -160,9 +150,9 @@ public class TxTransactionExecutorService extends AbstractTxTransactionExecutor 
             senderItems.forEach((k, v) -> {
                 try {
                     if (transactionStatusEnum.getCode() == TransactionStatusEnum.COMMIT.getCode()) {
-                        OkHttpTools.getInstance().post(String.format(Constant.httpCommit, k), gson.toJson(v));
+                        OkHttpTools.getInstance().post(String.format(Constant.HTTP_COMMIT, k), GSON.toJson(v));
                     } else if (transactionStatusEnum.getCode() == TransactionStatusEnum.ROLLBACK.getCode()) {
-                        OkHttpTools.getInstance().post(String.format(Constant.httpRollback, k), gson.toJson(v));
+                        OkHttpTools.getInstance().post(String.format(Constant.HTTP_ROLLBACK, k), GSON.toJson(v));
                     }
                 } catch (IOException e) {
                     e.printStackTrace();

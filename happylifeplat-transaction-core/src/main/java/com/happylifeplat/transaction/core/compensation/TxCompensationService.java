@@ -1,27 +1,42 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.core.compensation;
 
-import com.happylifeplat.transaction.core.bean.TransactionRecover;
+import com.happylifeplat.transaction.common.bean.TransactionRecover;
 import com.happylifeplat.transaction.core.compensation.command.TxCompensationAction;
-import com.happylifeplat.transaction.core.config.TxConfig;
+import com.happylifeplat.transaction.common.config.TxConfig;
 
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- * 本地补偿的方法
- *
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/7/19 14:06
- * @since JDK 1.8
+ * @author xiaoyu
  */
 public interface TxCompensationService {
 
+    /**
+     * 补偿操作
+     */
     void compensate();
 
 
     /**
      * 启动本地补偿事务，根据配置是否进行补偿
+     *
+     * @param txConfig 配置信息
+     * @throws Exception 异常信息
      */
     void start(TxConfig txConfig) throws Exception;
 
@@ -50,10 +65,12 @@ public interface TxCompensationService {
      */
     void update(TransactionRecover transactionRecover);
 
+
     /**
-     * 提交补偿操作
+     * 提交补偿
      *
      * @param txCompensationAction 补偿命令
+     * @return true 成功
      */
     Boolean submit(TxCompensationAction txCompensationAction);
 }

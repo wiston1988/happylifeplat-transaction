@@ -1,3 +1,20 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.common.netty.serizlize;
 
 import com.happylifeplat.transaction.common.enums.NettyMessageActionEnum;
@@ -16,20 +33,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- *
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/7/28 19:23
- * @since JDK 1.8
+ * @author xiaoyu
  */
 public class SerializeTest {
 
+    private static final int MAX=1000;
+
     public static void main(String[] args) throws IOException {
         final long start = System.currentTimeMillis();
-        for (int i = 0; i <1000000 ; i++) {
+        for (int i = 0; i <MAX ; i++) {
             KryoSerialize kryoSerialization = new KryoSerialize(KryoPoolFactory.getKryoPoolInstance());
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
             String groupId = IdWorkerUtils.getInstance().createGroupId();
@@ -39,8 +51,10 @@ public class SerializeTest {
             List<TxTransactionItem> items = new ArrayList<>(2);
             //tmManager 用redis hash 结构来存储 整个事务组的状态做为hash结构的第一条数据
             TxTransactionItem groupItem = new TxTransactionItem();
-            groupItem.setStatus(TransactionStatusEnum.BEGIN.getCode());//整个事务组状态为开始
-            groupItem.setTransId(groupId); //设置事务id为组的id  即为 hashKey
+            //整个事务组状态为开始
+            groupItem.setStatus(TransactionStatusEnum.BEGIN.getCode());
+            //设置事务id为组的id  即为 hashKey
+            groupItem.setTransId(groupId);
             groupItem.setTaskKey(groupId);
             items.add(groupItem);
             TxTransactionItem item = new TxTransactionItem();

@@ -1,35 +1,48 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.tx.manager.service.impl;
 
+import com.happylifeplat.transaction.common.constant.CommonConstant;
 import com.happylifeplat.transaction.common.enums.TransactionRoleEnum;
 import com.happylifeplat.transaction.common.enums.TransactionStatusEnum;
+import com.happylifeplat.transaction.common.holder.DateUtils;
 import com.happylifeplat.transaction.common.netty.bean.TxTransactionGroup;
 import com.happylifeplat.transaction.common.netty.bean.TxTransactionItem;
 import com.happylifeplat.transaction.tx.manager.config.Constant;
 import com.happylifeplat.transaction.tx.manager.service.TxManagerService;
 import org.apache.commons.collections.CollectionUtils;
-import org.springframework.beans.BeanUtils;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.text.ParseException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- *
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/7/14 12:55
- * @since JDK 1.8
+ * @author xiaoyu
  */
 @Component
 @SuppressWarnings("unchecked")
@@ -56,6 +69,10 @@ public class TxManagerServiceImpl implements TxManagerService {
     public Boolean saveTxTransactionGroup(TxTransactionGroup txTransactionGroup) {
         try {
             final String groupId = txTransactionGroup.getId();
+            //保存数据 到sortSet
+            redisTemplate.opsForZSet()
+                    .add(CommonConstant.REDIS_KEY_SET, groupId, CommonConstant.REDIS_SCOPE);
+
             final List<TxTransactionItem> itemList = txTransactionGroup.getItemList();
             if (CollectionUtils.isNotEmpty(itemList)) {
                 for (TxTransactionItem item : itemList) {
@@ -117,16 +134,31 @@ public class TxManagerServiceImpl implements TxManagerService {
      * @param key     redis key 也就是txGroupId
      * @param hashKey 也就是taskKey
      * @param status  事务状态
+     * @param message 执行结果信息
      * @return true 成功 false 失败
      */
     @Override
-    public Boolean updateTxTransactionItemStatus(String key, String hashKey, int status) {
+    public Boolean updateTxTransactionItemStatus(String key, String hashKey, int status, Object message) {
         try {
             final TxTransactionItem item = (TxTransactionItem)
                     redisTemplate.opsForHash().get(cacheKey(key), hashKey);
-           /* TxTransactionItem item = new TxTransactionItem();
-            BeanUtils.copyProperties(object, item);*/
             item.setStatus(status);
+            if (Objects.nonNull(message)) {
+                item.setMessage(message);
+            }
+            //计算耗时
+            final String createDate = item.getCreateDate();
+
+            final LocalDateTime now = LocalDateTime.now();
+
+            try {
+                final LocalDateTime createDateTime = DateUtils.parseLocalDateTime(createDate);
+                final long consumeTime = DateUtils.getSecondsBetween(createDateTime, now);
+                item.setConsumeTime(consumeTime);
+            } catch (ParseException e) {
+                e.printStackTrace();
+            }
+
             redisTemplate.opsForHash().put(cacheKey(key), item.getTaskKey(), item);
         } catch (BeansException e) {
             return false;
@@ -188,6 +220,6 @@ public class TxManagerServiceImpl implements TxManagerService {
     }
 
     private String cacheKey(String key) {
-        return String.format(Constant.REDIS_PRE_FIX, key);
+        return String.format(CommonConstant.REDIS_PRE_FIX, key);
     }
 }

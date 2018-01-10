@@ -1,3 +1,20 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.core.netty.handler;
 
 import com.happylifeplat.transaction.common.enums.NettyMessageActionEnum;
@@ -9,7 +26,7 @@ import com.happylifeplat.transaction.common.netty.bean.TxTransactionGroup;
 import com.happylifeplat.transaction.common.netty.bean.TxTransactionItem;
 import com.happylifeplat.transaction.core.concurrent.task.BlockTask;
 import com.happylifeplat.transaction.core.concurrent.task.BlockTaskHelper;
-import com.happylifeplat.transaction.core.config.TxConfig;
+import com.happylifeplat.transaction.common.config.TxConfig;
 import com.happylifeplat.transaction.core.helper.SpringBeanUtils;
 import com.happylifeplat.transaction.core.netty.NettyClientService;
 import io.netty.channel.ChannelHandler;
@@ -28,17 +45,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
-
-
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- *  NettyClientMessageHandler
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/8/3 19:48
- * @since JDK 1.8
+ * @author xiaoyu
  */
 @Component
 @ChannelHandler.Sharable
@@ -60,7 +68,7 @@ public class NettyClientMessageHandler extends ChannelInboundHandlerAdapter {
     private static volatile ChannelHandlerContext ctx;
 
 
-    private static final HeartBeat heartBeat = new HeartBeat();
+    private static final HeartBeat HEART_BEAT = new HeartBeat();
 
 
     private TxConfig txConfig;
@@ -74,17 +82,20 @@ public class NettyClientMessageHandler extends ChannelInboundHandlerAdapter {
     public void channelRead(ChannelHandlerContext ctx, final Object msg) throws Exception {
         net_state = true;
         HeartBeat heartBeat = (HeartBeat) msg;
-        LogUtil.debug(LOGGER,"接收服务端据命令为,执行的动作为:{}", heartBeat::getAction);
         final NettyMessageActionEnum actionEnum = NettyMessageActionEnum.acquireByCode(heartBeat.getAction());
+        LogUtil.debug(LOGGER, "接收服务端据命令为,执行的动作为:{}", actionEnum::getDesc);
        /* executorService.execute(() -> {*/
         try {
             switch (actionEnum) {
-                case HEART://心跳动作
+                case HEART:
                     break;
-                case RECEIVE://客户端接收动作
+                case RECEIVE:
                     receivedCommand(heartBeat.getKey(), heartBeat.getResult());
                     break;
-                case ROLLBACK://收到服务端的回滚指令
+                case ROLLBACK:
+                    notify(heartBeat);
+                    break;
+                case COMPLETE_COMMIT:
                     notify(heartBeat);
                     break;
                 case GET_TRANSACTION_GROUP_STATUS:
@@ -97,6 +108,8 @@ public class NettyClientMessageHandler extends ChannelInboundHandlerAdapter {
                     final BlockTask task = BlockTaskHelper.getInstance().getTask(heartBeat.getKey());
                     task.setAsyncCall(objects -> heartBeat.getTxTransactionGroup());
                     task.signal();
+                    break;
+                default:
                     break;
 
             }
@@ -167,14 +180,12 @@ public class NettyClientMessageHandler extends ChannelInboundHandlerAdapter {
         if (IdleStateEvent.class.isAssignableFrom(evt.getClass())) {
             IdleStateEvent event = (IdleStateEvent) evt;
             if (event.state() == IdleState.READER_IDLE) {
-                //表示已经多久没有收到数据了
-                //ctx.close();
                 SpringBeanUtils.getInstance().getBean(NettyClientService.class).doConnect();
             } else if (event.state() == IdleState.WRITER_IDLE) {
                 //表示已经多久没有发送数据了
-                heartBeat.setAction(NettyMessageActionEnum.HEART.getCode());
-                ctx.writeAndFlush(heartBeat);
-                LogUtil.debug(LOGGER,"向服务端发送的心跳，动作为:{}", heartBeat::getAction);
+                HEART_BEAT.setAction(NettyMessageActionEnum.HEART.getCode());
+                ctx.writeAndFlush(HEART_BEAT);
+                LogUtil.debug(LOGGER, () -> "向服务端发送的心跳");
             } else if (event.state() == IdleState.ALL_IDLE) {
                 //表示已经多久既没有收到也没有发送数据了
                 SpringBeanUtils.getInstance().getBean(NettyClientService.class).doConnect();
@@ -238,7 +249,7 @@ public class NettyClientMessageHandler extends ChannelInboundHandlerAdapter {
      *
      * @param heartBeat 定义的数据传输对象
      */
-    public void AsyncSendTxManagerMessage(HeartBeat heartBeat) {
+    public void asyncSendTxManagerMessage(HeartBeat heartBeat) {
         if (ctx != null && ctx.channel() != null && ctx.channel().isActive()) {
             ctx.writeAndFlush(heartBeat);
         }

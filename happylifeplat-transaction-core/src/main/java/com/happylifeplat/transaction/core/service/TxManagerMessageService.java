@@ -1,18 +1,27 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.core.service;
 
 import com.happylifeplat.transaction.common.netty.bean.TxTransactionGroup;
 import com.happylifeplat.transaction.common.netty.bean.TxTransactionItem;
 
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- * 与txManage消息服务
- *
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/7/24 14:51
- * @since JDK 1.8
+ * @author xiaoyu
  */
 public interface TxManagerMessageService {
 
@@ -37,6 +46,7 @@ public interface TxManagerMessageService {
 
     /**
      * 获取事务组状态
+     *
      * @param txGroupId 事务组id
      * @return 事务组状态
      */
@@ -45,11 +55,11 @@ public interface TxManagerMessageService {
 
     /**
      * 获取事务组信息
+     *
      * @param txGroupId 事务组id
      * @return TxTransactionGroup
      */
     TxTransactionGroup findByTxGroupId(String txGroupId);
-
 
 
     /**
@@ -79,25 +89,27 @@ public interface TxManagerMessageService {
      * @param status    状态  {@linkplain com.happylifeplat.transaction.common.enums.TransactionStatusEnum}
      * @return true 成功 false 失败
      */
-    Boolean completeCommitTxTransaction(String txGroupId, String taskKey,int status);
+    Boolean completeCommitTxTransaction(String txGroupId, String taskKey, int status);
 
 
     /**
-     * 异步完成自身事务的提交
+     * 异步完成自身的提交
      *
      * @param txGroupId 事务组id
      * @param taskKey   子事务的taskKey
      * @param status    状态  {@linkplain com.happylifeplat.transaction.common.enums.TransactionStatusEnum}
+     * @param message   完成信息 返回结果，或者是异常信息
      */
-    void AsyncCompleteCommitTxTransaction(String txGroupId, String taskKey,int status);
+    void asyncCompleteCommit(String txGroupId, String taskKey, int status,Object message);
 
     /**
      * 提交参与者事务状态
-     * @param txGroupId  事务组id
+     *
+     * @param txGroupId         事务组id
      * @param txTransactionItem 参与者
-     * @param status 状态
+     * @param status            状态
      * @return
      */
-    Boolean commitActorTxTransaction(String txGroupId,TxTransactionItem txTransactionItem,int status);
+    Boolean commitActorTxTransaction(String txGroupId, TxTransactionItem txTransactionItem, int status);
 
 }

@@ -1,10 +1,27 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.core.netty.impl;
 
 import com.google.common.base.StandardSystemProperty;
 import com.happylifeplat.transaction.common.entity.TxManagerServer;
 import com.happylifeplat.transaction.common.enums.SerializeProtocolEnum;
 import com.happylifeplat.transaction.common.holder.LogUtil;
-import com.happylifeplat.transaction.core.config.TxConfig;
+import com.happylifeplat.transaction.common.config.TxConfig;
 import com.happylifeplat.transaction.core.netty.NettyClientService;
 import com.happylifeplat.transaction.core.netty.handler.NettyClientHandlerInitializer;
 import com.happylifeplat.transaction.core.netty.handler.NettyClientMessageHandler;
@@ -28,22 +45,13 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- * Netty 客户端启动
- *
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/7/13 19:08
- * @since JDK 1.8
+ * @author xiaoyu
  */
 @Service
 public class NettyClientServiceImpl implements NettyClientService {
@@ -65,6 +73,8 @@ public class NettyClientServiceImpl implements NettyClientService {
     private Channel channel;
 
     private Bootstrap bootstrap;
+
+    private static final String OS_NAME = "Linux";
 
     private final NettyClientHandlerInitializer nettyClientHandlerInitializer;
 
@@ -100,7 +110,7 @@ public class NettyClientServiceImpl implements NettyClientService {
     }
 
     private void groups(Bootstrap bootstrap, int workThreads) {
-        if (Objects.equals(StandardSystemProperty.OS_NAME.value(), "Linux")) {
+        if (Objects.equals(StandardSystemProperty.OS_NAME.value(), OS_NAME)) {
             workerGroup = new EpollEventLoopGroup(workThreads);
             bootstrap.group(workerGroup);
             bootstrap.channel(EpollSocketChannel.class);
@@ -126,6 +136,7 @@ public class NettyClientServiceImpl implements NettyClientService {
     }
 
 
+    @Override
     public void doConnect() {
         if (channel != null && channel.isActive()) {
             return;

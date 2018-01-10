@@ -1,14 +1,31 @@
+/*
+ *
+ * Copyright 2017-2018 549477611@qq.com(xiaoyu)
+ *
+ * This copyrighted material is made available to anyone wishing to use, modify,
+ * copy, or redistribute it subject to the terms and conditions of the GNU
+ * Lesser General Public License, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 package com.happylifeplat.transaction.core.service.impl;
 
 import com.google.common.collect.Lists;
 import com.google.gson.reflect.TypeToken;
+import com.happylifeplat.transaction.common.constant.CommonConstant;
 import com.happylifeplat.transaction.common.entity.TxManagerServer;
 import com.happylifeplat.transaction.common.entity.TxManagerServiceDTO;
 import com.happylifeplat.transaction.common.holder.LogUtil;
 import com.happylifeplat.transaction.common.holder.httpclient.OkHttpTools;
 import com.happylifeplat.transaction.core.concurrent.threadpool.TxTransactionThreadFactory;
-import com.happylifeplat.transaction.core.config.TxConfig;
-import com.happylifeplat.transaction.core.constant.Constant;
+import com.happylifeplat.transaction.common.config.TxConfig;
 import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,20 +33,13 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.Type;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * <p>Description: .</p>
- * <p>Company: 深圳市旺生活互联网科技有限公司</p>
- * <p>Copyright: 2015-2017 happylifeplat.com All Rights Reserved</p>
- *
- * @author yu.xiao@happylifeplat.com
- * @version 1.0
- * @date 2017/7/13 19:39
- * @since JDK 1.8
+ * @author xiaoyu
  */
 public class TxManagerLocator {
 
@@ -46,11 +56,11 @@ public class TxManagerLocator {
 
     private TxConfig txConfig;
 
-    private ScheduledExecutorService m_executorService;
+    private ScheduledExecutorService mExecutorservice;
 
-    private AtomicReference<List<TxManagerServiceDTO>> m_configServices;
+    private AtomicReference<List<TxManagerServiceDTO>> mConfigservices;
 
-    private Type m_responseType;
+    private Type mResponsetype;
 
     public void setTxConfig(TxConfig txConfig) {
         this.txConfig = txConfig;
@@ -58,10 +68,10 @@ public class TxManagerLocator {
 
     private TxManagerLocator() {
         List<TxManagerServiceDTO> initial = Lists.newArrayList();
-        m_configServices = new AtomicReference<>(initial);
-        m_responseType = new TypeToken<List<TxManagerServiceDTO>>() {
+        mConfigservices = new AtomicReference<>(initial);
+        mResponsetype = new TypeToken<List<TxManagerServiceDTO>>() {
         }.getType();
-        this.m_executorService = Executors.newSingleThreadScheduledExecutor(
+        this.mExecutorservice = new ScheduledThreadPoolExecutor(1,
                 TxTransactionThreadFactory.create("TxManagerLocator", true));
     }
 
@@ -81,7 +91,7 @@ public class TxManagerLocator {
             List<TxManagerServiceDTO> randomServices = Lists.newLinkedList(txManagerService);
             Collections.shuffle(randomServices);
             for (TxManagerServiceDTO serviceDTO : randomServices) {
-                String url = String.join("", serviceDTO.getHomepageUrl(), Constant.TX_MANAGER_PRE, Constant.FIND_SERVER);
+                String url = String.join("", serviceDTO.getHomepageUrl(), CommonConstant.TX_MANAGER_PRE, CommonConstant.FIND_SERVER);
                 LOGGER.debug("Loading service from {}", url);
                 try {
                     return OkHttpTools.getInstance().get(url, null, TxManagerServer.class);
@@ -98,17 +108,17 @@ public class TxManagerLocator {
 
 
     private List<TxManagerServiceDTO> getTxManagerService() {
-        if (m_configServices.get().isEmpty()) {
+        if (mConfigservices.get().isEmpty()) {
             updateTxManagerServices();
         }
-        return m_configServices.get();
+        return mConfigservices.get();
     }
 
 
     public void schedulePeriodicRefresh() {
-        this.m_executorService.scheduleAtFixedRate(
+        this.mExecutorservice.scheduleAtFixedRate(
                 () -> {
-                    LogUtil.info(LOGGER,"refresh updateTxManagerServices delayTime:{}",()->txConfig.getRefreshInterval());
+                    LogUtil.info(LOGGER, "refresh updateTxManagerServices delayTime:{}", () -> txConfig.getRefreshInterval());
                     updateTxManagerServices();
                 }, 0, txConfig.getRefreshInterval(),
                 TimeUnit.SECONDS);
@@ -121,12 +131,12 @@ public class TxManagerLocator {
         for (int i = 0; i < maxRetries; i++) {
             try {
                 final List<TxManagerServiceDTO> serviceDTOList =
-                        OkHttpTools.getInstance().get(url, m_responseType);
+                        OkHttpTools.getInstance().get(url, mResponsetype);
                 if (CollectionUtils.isEmpty(serviceDTOList)) {
                     LogUtil.error(LOGGER, "Empty response! 请求url为:{}", () -> url);
                     continue;
                 }
-                m_configServices.set(serviceDTOList);
+                mConfigservices.set(serviceDTOList);
                 return;
             } catch (Throwable ex) {
                 ex.printStackTrace();
@@ -139,7 +149,7 @@ public class TxManagerLocator {
     }
 
     private String assembleUrl() {
-        return String.join("", txConfig.getTxManagerUrl(), Constant.TX_MANAGER_PRE, Constant.LOAD_TX_MANAGER_SERVICE_URL);
+        return String.join("", txConfig.getTxManagerUrl(), CommonConstant.TX_MANAGER_PRE, CommonConstant.LOAD_TX_MANAGER_SERVICE_URL);
     }
 
 }
